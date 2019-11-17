@@ -10,6 +10,21 @@ using UnityEngine;
 
 public class OnlinePlayerManager : MonoBehaviour
 {
+
+    private static OnlinePlayerManager instance = null;
+    public static OnlinePlayerManager Instance
+    {
+        get
+        {
+            return instance;
+        }
+    }
+    public void Awake()
+    {
+        instance = this;
+        DontDestroyOnLoad(this);
+    }
+
     public struct Player
     {
         public EndPoint m_endpoint;

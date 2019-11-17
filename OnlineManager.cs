@@ -33,6 +33,7 @@ public class OnlineManager : MonoBehaviour
     public void Awake()
     {
         instance = this;
+        DontDestroyOnLoad(this);
     }
     public void Start()
     {
