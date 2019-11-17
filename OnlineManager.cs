@@ -56,7 +56,15 @@ public class OnlineManager : MonoBehaviour
         return m_host;
     }
 
-    public List<EndPoint> m_clients = new List<EndPoint>();
+    public EndPoint GetLocalEndpoint()
+    {
+        return m_tcp.GetLocalEndPoint();
+    }
+    public void FetchClients(ref List<EndPoint> _clients)
+    {
+        _clients.Clear();
+        m_tcp.FetchClients(_clients);
+    }
 
     public void StartClient()
     {
@@ -88,9 +96,6 @@ public class OnlineManager : MonoBehaviour
     {
         if (!IsConnected())
             return;
-        //clients management
-        m_clients.Clear();
-        m_tcp.FetchClients(m_clients);
 
         m_tcp.Process();
     }

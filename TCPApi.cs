@@ -55,6 +55,16 @@ namespace Assets
                 }
                 m_pendingMessages.Clear();
             }
+            lock(lockClients)
+            {
+                var removingClients = m_clients.FindAll(c => !c.m_Thread.IsAlive);
+                foreach(var client in removingClients)
+                {
+                    EndPoint ep = client.m_ListenClient ? client.m_socket.LocalEndPoint : client.m_socket.RemoteEndPoint;
+                    Log("client left " + ep.ToString());
+                    m_clients.Remove(client);
+                }
+            }
         }
 
         public const uint BufferSize = 4096;
@@ -79,13 +89,23 @@ namespace Assets
             return client;
         }
 
+        public EndPoint GetLocalEndPoint()
+        {
+            lock (lockClients)
+            {
+                return m_clients.ElementAt(0).m_socket.LocalEndPoint;
+            }
+        }
         public void FetchClients(List<EndPoint> _clients)
         {
             lock(lockClients)
             {
                 foreach (var client in m_clients)
                 {
-                    _clients.Add(client.m_socket.RemoteEndPoint);
+                    if(client.m_ListenClient)
+                        _clients.Add(client.m_socket.LocalEndPoint);
+                    else
+                        _clients.Add(client.m_socket.RemoteEndPoint);
                 }
             }
 
@@ -200,6 +220,7 @@ namespace Assets
                while (true)
                {
                     Socket newSocket = AcceptClient(ref client);
+                    Log("client joined  " + newSocket.RemoteEndPoint.ToString());
                     Client newClient = NewClient(newSocket);
                     StartReceivingClient(newClient);
                     lock (lockClients)
