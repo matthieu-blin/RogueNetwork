@@ -42,6 +42,10 @@ public class OnlineManager : MonoBehaviour
         m_tcp.OnMessageReceived = OnGameMessage;
         m_MessageCallbacksHandler = new Dictionary<byte, GameMessageCallback>();
     }
+    public void OnDisable()
+    {
+        m_tcp.End();
+    }
 
     private TCPApi m_tcp;
 

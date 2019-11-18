@@ -322,7 +322,14 @@ namespace Assets
             {
                 foreach (Client client in m_clients)
                 {
-                    client.m_socket.Shutdown(SocketShutdown.Both);
+                    try
+                    {
+                        client.m_socket.Shutdown(SocketShutdown.Both);
+                    }
+                    catch(Exception )
+                    {
+
+                    }
                     client.m_socket.Close();
                     client.m_Thread.Join();
                     client.m_socket = null;
