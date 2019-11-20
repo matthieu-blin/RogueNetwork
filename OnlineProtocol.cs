@@ -6,7 +6,8 @@ public class OnlineProtocol
     public enum Handler
     {
         PLAYERS_UPDATE = 0,
-        LOBBY_GO = 1,
+        LOBBY_GO ,
+        ONLINE_OBJECT,
         GAME_PROTOCOL_START, //user can use id from this
     }
 }
