@@ -10,6 +10,7 @@ public class OnlineObjectManager : MonoBehaviour
     public GameObject[] m_DynamicObject = new GameObject[0];
     private List<GameObject> m_staticObject = new List<GameObject>();
     private uint m_IDGenerator = 0;
+    private List<OnlineBehavior> m_onlineBehaviors = new List<OnlineBehavior>();
     public static OnlineObjectManager Instance
     {
         get
@@ -27,12 +28,24 @@ public class OnlineObjectManager : MonoBehaviour
     void Start()
     {
         OnlineManager.Instance.RegisterHandler((byte)OnlineProtocol.Handler.ONLINE_OBJECT, RecvOnlineObject);
+        OnlineManager.Instance.RegisterHandler((byte)OnlineProtocol.Handler.ONLINE_OBJECT_UPDATE, RecvOnlineBehaviorUpdate);
+    }
+
+    internal void RegisterOnlineBehavior(OnlineBehavior onlineBehavior)
+    {
+        m_onlineBehaviors.Add(onlineBehavior);
     }
 
     // Update is called once per frame
     void Update()
     {
-        
+       foreach(var ob in m_onlineBehaviors)
+        {
+            if(ob.NeedUpdate())
+            {
+                SendOnlineBehaviorUpdate(ob); 
+            }
+        }
     }
     public GameObject Instanciate(string _name)
     {
@@ -104,6 +117,30 @@ public class OnlineObjectManager : MonoBehaviour
                 w.Write(_obj.GetComponent<OnlineIdentity>().m_srcName);
                 w.Write(_obj.GetComponent<OnlineIdentity>().m_uid);
                 OnlineManager.Instance.SendMessage((byte)OnlineProtocol.Handler.ONLINE_OBJECT, m.GetBuffer());
+            }
+        }
+    }
+    private void RecvOnlineBehaviorUpdate(byte[] _msg)
+    {
+        using (MemoryStream m = new MemoryStream(_msg))
+        {
+            using (BinaryReader r = new BinaryReader(m))
+            {
+                ulong uid = r.ReadUInt64();
+                var obj = m_onlineBehaviors.Find(ob => ob.m_onlineIdentity.m_uid == uid);
+                obj.Read(r);
+            }
+        }
+    }
+    private void SendOnlineBehaviorUpdate(OnlineBehavior _obj)
+    {
+        using (MemoryStream m = new MemoryStream())
+        {
+            using (BinaryWriter w = new BinaryWriter(m))
+            {
+                w.Write(_obj.m_onlineIdentity.m_uid);
+                _obj.Write(w);
+                OnlineManager.Instance.SendMessage((byte)OnlineProtocol.Handler.ONLINE_OBJECT_UPDATE, m.GetBuffer());
             }
         }
     }

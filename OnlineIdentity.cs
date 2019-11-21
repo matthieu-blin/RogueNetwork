@@ -11,6 +11,7 @@ public class OnlineIdentity : MonoBehaviour
 
     public ulong m_uid = 0;
     public string m_srcName;
+    public uint m_localPlayerAuthority = 0; //host by default
     public enum Type
     { 
         Static, //object in scene, sync between host and clients
@@ -58,6 +59,20 @@ public class OnlineIdentity : MonoBehaviour
                 }
         }
 
+    }
+
+    public bool HasAuthority()
+    {
+        switch(m_type)
+        {
+            case Type.HostOnly: return OnlineManager.Instance.IsHost();
+            case Type.Static:
+            case Type.Dynamic:
+                {
+                    return m_localPlayerAuthority == OnlinePlayerManager.Instance.m_localPlayerID;
+                }
+        }
+        return false;
     }
 
     // Update is called once per frame
