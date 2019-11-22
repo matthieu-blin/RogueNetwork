@@ -21,7 +21,7 @@ public class OnlineBehavior : MonoBehaviour
     private Dictionary<Type, FieldReader> m_FieldReaders = new Dictionary<Type, FieldReader>();
     public delegate void FieldWriter(FieldInfo _f,BinaryWriter _w);
     private Dictionary<Type, FieldWriter> m_FieldWriters = new Dictionary<Type, FieldWriter>();
-    public OnlineBehavior()
+    public void Init()
     {
 
         m_syncedFields = GetType().GetFields(BindingFlags.NonPublic

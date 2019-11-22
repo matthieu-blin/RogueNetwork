@@ -13,6 +13,7 @@ public class OnlineTransform : OnlineBehavior
     void Start()
     {
         m_transform = transform;
+        Init();
     }
 
     // Update is called once per frame
