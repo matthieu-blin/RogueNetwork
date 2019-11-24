@@ -263,7 +263,7 @@ namespace Assets
                     msg.m_message = new byte[numByte];
                     Array.Copy(bytes, msg.m_message, numByte);
                     msg.m_playerID = 0;
-                    lock (m_pendingMessages)
+                    lock (lockMessage)
                     {
                         m_pendingMessages.Add(msg);
                     }

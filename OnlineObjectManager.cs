@@ -143,7 +143,7 @@ public class OnlineObjectManager : MonoBehaviour
             using (BinaryReader r = new BinaryReader(m))
             {
                 ulong uid = r.ReadUInt64();
-                var obj = m_onlineBehaviors.Find(ob => ob.m_onlineIdentity.m_uid == uid);
+                var obj = m_onlineBehaviors.Find(ob => ob.m_onlineIdentity != null && ob.m_onlineIdentity.m_uid == uid);
                 //note : in case of parallel creation, we could receive msg before instanciation
                 //this should be buffered instead
                 if(obj != null)

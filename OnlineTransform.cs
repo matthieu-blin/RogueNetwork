@@ -5,20 +5,31 @@ public class OnlineTransform : OnlineBehavior
 {
 
     [Sync]
-    public Transform m_transform;
+    Vector3 pos = new Vector3();
+    [Sync]
+    Quaternion rot = new Quaternion();
     public OnlineTransform()
     {
     }
-    // Use this for initialization
+
+        // Use this for initialization
     void Start()
     {
-        m_transform = transform;
+        pos = transform.position;
+        rot = transform.rotation;
         Init();
     }
 
-    // Update is called once per frame
-    void Update()
+    public override void LocalUpdate()
     {
-
+        pos = transform.position;
+        rot = transform.rotation;
     }
+    public override void RemoteUpdate()
+    {
+        transform.position = pos;
+        transform.rotation = rot;
+    }
+
+
 }
