@@ -16,6 +16,7 @@ public class OnlineIdentity : MonoBehaviour
     { 
         Static, //object in scene, sync between host and clients
         Dynamic, //object dynamically spawned using OnlineManager.Spawn
+        Determinist, //object dynamically spawned but on each clients, you need to give a determinist ids
         HostOnly //object existing only on Host
     };
     public Type m_type = Type.Static;
@@ -57,6 +58,11 @@ public class OnlineIdentity : MonoBehaviour
                     }
                     break;
                 }
+            case Type.Determinist:
+                {
+                    //check if uid is correctly setted and is determinist
+                    break;
+                }
         }
 
     }
@@ -68,6 +74,7 @@ public class OnlineIdentity : MonoBehaviour
             case Type.HostOnly: return OnlineManager.Instance.IsHost();
             case Type.Static:
             case Type.Dynamic:
+            case Type.Determinist:
                 {
                     return m_localPlayerAuthority == OnlinePlayerManager.Instance.m_localPlayerID;
                 }

@@ -24,6 +24,10 @@ public class OnlineObjectManager : MonoBehaviour
         DontDestroyOnLoad(this);
     }
 
+    public ulong ComputeDeterministID(uint _id)
+    {
+        return (1 << 32) + _id;
+    }
     // Start is called before the first frame update
     void Start()
     {
@@ -54,10 +58,22 @@ public class OnlineObjectManager : MonoBehaviour
         GameObject obj = Array.Find(m_DynamicObject, go => go.name == _name);
         GameObject newObj = Instantiate(obj);
         newObj.GetComponent<OnlineIdentity>().m_srcName = _name;
+        newObj.GetComponent<OnlineIdentity>().m_type = OnlineIdentity.Type.Dynamic;
+        return newObj;
+    }
+    public GameObject Instanciate(GameObject _prefab, Vector3 _pos, Quaternion _rot, uint _playerID = 0)
+    {
+        if (!OnlineManager.Instance.IsHost())
+            return null;
+        GameObject obj = Array.Find(m_DynamicObject, go => go.name == _prefab.name);
+        GameObject newObj = Instantiate(obj, _pos, _rot);
+        newObj.GetComponent<OnlineIdentity>().m_srcName = _prefab.name;
+        newObj.GetComponent<OnlineIdentity>().m_type = OnlineIdentity.Type.Dynamic;
+        newObj.GetComponent<OnlineIdentity>().m_localPlayerAuthority = _playerID;
         return newObj;
     }
 
-  
+
     //gameobject should have been instanciate using OnlineObjectManager.Instanciate
     public void Spawn(GameObject _obj)
     {
@@ -128,7 +144,10 @@ public class OnlineObjectManager : MonoBehaviour
             {
                 ulong uid = r.ReadUInt64();
                 var obj = m_onlineBehaviors.Find(ob => ob.m_onlineIdentity.m_uid == uid);
-                obj.Read(r);
+                //note : in case of parallel creation, we could receive msg before instanciation
+                //this should be buffered instead
+                if(obj != null)
+                    obj.Read(r);
             }
         }
     }

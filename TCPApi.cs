@@ -251,7 +251,8 @@ namespace Assets
                     if (numByte == 4096)
                     {
                         Log("error : buffer size exceeded");
-                        break;
+                        //should handle this
+                        continue;
                     }
                     if (numByte == 0)
                     {
