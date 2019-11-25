@@ -43,16 +43,10 @@ public abstract class OnlineBehavior : MonoBehaviour
 
     }
 
-    public void Update()
+    private void OnDestroy()
     {
-        if (HasAuthority())
-            LocalUpdate();
-        else
-            RemoteUpdate();
+        OnlineObjectManager.Instance.UnregisterOnlineBehavior(this);
     }
-    public abstract void LocalUpdate();
-    public abstract void RemoteUpdate();
-
     public bool HasAuthority()
     {
         if (m_onlineIdentity == null)

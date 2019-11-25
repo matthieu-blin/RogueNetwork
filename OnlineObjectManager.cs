@@ -40,6 +40,10 @@ public class OnlineObjectManager : MonoBehaviour
         m_onlineBehaviors.Add(onlineBehavior);
     }
 
+    internal void UnregisterOnlineBehavior(OnlineBehavior onlineBehavior)
+    {
+        m_onlineBehaviors.Remove(onlineBehavior);
+    }
     // Update is called once per frame
     void Update()
     {

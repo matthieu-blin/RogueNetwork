@@ -20,15 +20,18 @@ public class OnlineTransform : OnlineBehavior
         Init();
     }
 
-    public override void LocalUpdate()
+    void Update()
     {
-        pos = transform.position;
-        rot = transform.rotation;
-    }
-    public override void RemoteUpdate()
-    {
-        transform.position = pos;
-        transform.rotation = rot;
+        if (HasAuthority())
+        {
+            pos = transform.position;
+            rot = transform.rotation;
+        }
+        else
+        {
+            transform.position = pos;
+            transform.rotation = rot;
+        }
     }
 
 
