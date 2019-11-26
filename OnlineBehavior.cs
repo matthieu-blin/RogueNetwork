@@ -7,20 +7,26 @@ using System.Linq;
 using System.IO;
 
 [AttributeUsage( AttributeTargets.Field , AllowMultiple = true)]
-public class Sync : Attribute
-{
+public class Sync : Attribute{}
 
-}
-
+[AttributeUsage(AttributeTargets.Method, AllowMultiple = true)]
+public class CMD : Attribute { }
+[AttributeUsage(AttributeTargets.Method, AllowMultiple = true)]
+public class RPC : Attribute { }
 public abstract class OnlineBehavior : MonoBehaviour
 {
 
     public OnlineIdentity m_onlineIdentity;
     private FieldInfo[] m_syncedFields;
-    public delegate void FieldReader(FieldInfo _f,BinaryReader _r);
+    public delegate void FieldReader(FieldInfo _f, BinaryReader _r);
     private Dictionary<Type, FieldReader> m_FieldReaders = new Dictionary<Type, FieldReader>();
-    public delegate void FieldWriter(FieldInfo _f,BinaryWriter _w);
+    public delegate void FieldWriter(FieldInfo _f, BinaryWriter _w);
     private Dictionary<Type, FieldWriter> m_FieldWriters = new Dictionary<Type, FieldWriter>();
+
+    private MethodInfo[] m_cmds;
+    private List<string> m_pendingcmds = new List<string>();
+    private MethodInfo[] m_rpcs;
+    private List<string> m_pendingrpcs = new List<string>();
     public void Init()
     {
 
@@ -30,6 +36,20 @@ public abstract class OnlineBehavior : MonoBehaviour
              | BindingFlags.Instance
              | BindingFlags.Static)
              .Where(prop => Attribute.IsDefined(prop, typeof(Sync))).ToArray();
+
+        m_rpcs = GetType().GetMethods(BindingFlags.NonPublic
+            | BindingFlags.Public
+            | BindingFlags.FlattenHierarchy
+            | BindingFlags.Instance
+            | BindingFlags.Static)
+            .Where(prop => Attribute.IsDefined(prop, typeof(RPC))).ToArray();
+
+        m_cmds = GetType().GetMethods(BindingFlags.NonPublic
+        | BindingFlags.Public
+        | BindingFlags.FlattenHierarchy
+        | BindingFlags.Instance
+        | BindingFlags.Static)
+        .Where(prop => Attribute.IsDefined(prop, typeof(CMD))).ToArray();
 
         OnlineObjectManager.Instance.RegisterOnlineBehavior(this);
 
@@ -60,31 +80,132 @@ public abstract class OnlineBehavior : MonoBehaviour
 
         if (m_onlineIdentity == null)
             return false;
-        return m_onlineIdentity.HasAuthority();
+        return m_onlineIdentity.HasAuthority() || OnlineManager.Instance.IsHost();
+    }
+
+    public void Call(string _fncName)
+    {
+        var rpc = Array.Find(m_rpcs, f => f.Name == _fncName);
+        if (rpc != null)
+        {
+            if(OnlineManager.Instance.IsHost())
+            {
+                m_pendingrpcs.Add(_fncName);
+                rpc.Invoke(this, new object[0]);
+            }
+        }
+        var cmd = Array.Find(m_cmds, f => f.Name == _fncName);
+        if (cmd != null)
+        {
+            if (HasAuthority())
+            {
+                if (OnlineManager.Instance.IsHost())
+                {
+                    cmd.Invoke(this, new object[0]);
+                }
+                else
+                {
+                    m_pendingcmds.Add(_fncName);
+                }
+            }
+        }
     }
 
     public void Write(BinaryWriter w)
     {
-        foreach(var field in m_syncedFields)
+        if (HasAuthority())
         {
-            Type type = field.FieldType;
-            FieldWriter fw;
-            if( m_FieldWriters.TryGetValue(type, out fw))
+            foreach (var field in m_syncedFields)
             {
-                fw(field, w);
+                Type type = field.FieldType;
+                FieldWriter fw;
+                if (m_FieldWriters.TryGetValue(type, out fw))
+                {
+                    fw(field, w);
+                }
             }
+            if (!OnlineManager.Instance.IsHost())
+            {
+                WriteCMDs(w);
+            }
+        }
+        if(OnlineManager.Instance.IsHost())
+        {
+            WriteRPCs(w);
         }
     }
 
     public void Read(BinaryReader r)
     {
-        foreach (var field in m_syncedFields)
+        if (!HasAuthority())
         {
-            Type type = field.FieldType;
-            FieldReader fr;
-            if (m_FieldReaders.TryGetValue(type, out fr))
+            foreach (var field in m_syncedFields)
             {
-                fr(field, r);
+                Type type = field.FieldType;
+                FieldReader fr;
+                if (m_FieldReaders.TryGetValue(type, out fr))
+                {
+                    fr(field, r);
+                }
+            }
+        }
+        if (OnlineManager.Instance.IsHost())
+        {
+            ReadCMDs(r);
+        }
+        else
+        {
+            ReadRPCs(r);
+        }
+    }
+    public void WriteRPCs(BinaryWriter w)
+    {
+        w.Write(m_pendingrpcs.Count);
+        foreach(var rpc in m_pendingrpcs)
+        {
+            w.Write(rpc);
+        }
+        m_pendingrpcs.Clear();
+     }
+    public void WriteCMDs(BinaryWriter w)
+    {
+        w.Write(m_pendingcmds.Count);
+        foreach (var cmd in m_pendingcmds)
+        {
+            w.Write(cmd);
+        }
+        m_pendingcmds.Clear();
+    }
+
+    public void ReadRPCs(BinaryReader r)
+    {
+        int rpcsCount = r.ReadInt32();
+        for(int i = 0; i < rpcsCount; ++i)
+        {
+            string name = r.ReadString();
+            var rpc = Array.Find(m_rpcs, f => f.Name == name);
+            if (rpc != null)
+            {
+                if (OnlineManager.Instance.IsHost())
+                {
+                    rpc.Invoke(this, new object[0]);
+                }
+            }
+        }
+    }
+    public void ReadCMDs(BinaryReader r)
+    {
+        int cmdsCount = r.ReadInt32();
+        for (int i = 0; i < cmdsCount; ++i)
+        {
+            string name = r.ReadString();
+            var cmd = Array.Find(m_cmds, f => f.Name == name);
+            if (cmd != null)
+            {
+                if (OnlineManager.Instance.IsHost())
+                {
+                    cmd.Invoke(this, new object[0]);
+                }
             }
         }
     }
