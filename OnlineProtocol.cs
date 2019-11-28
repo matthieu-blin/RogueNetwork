@@ -8,7 +8,8 @@ public class OnlineProtocol
         PLAYERS_UPDATE = 0,
         LOBBY_GO ,
         ONLINE_OBJECT,
-        ONLINE_OBJECT_UPDATE,
+        ONLINE_OBJECT_FIELDS,
+        ONLINE_OBJECT_METHODS,
         GAME_PROTOCOL_START, //user can use id from this
     }
 }

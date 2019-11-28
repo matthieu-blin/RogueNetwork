@@ -32,7 +32,8 @@ public class OnlineObjectManager : MonoBehaviour
     void Start()
     {
         OnlineManager.Instance.RegisterHandler((byte)OnlineProtocol.Handler.ONLINE_OBJECT, RecvOnlineObject);
-        OnlineManager.Instance.RegisterHandler((byte)OnlineProtocol.Handler.ONLINE_OBJECT_UPDATE, RecvOnlineBehaviorUpdate);
+        OnlineManager.Instance.RegisterHandler((byte)OnlineProtocol.Handler.ONLINE_OBJECT_FIELDS, RecvOnlineBehaviorFieldsUpdate);
+        OnlineManager.Instance.RegisterHandler((byte)OnlineProtocol.Handler.ONLINE_OBJECT_METHODS, RecvOnlineBehaviorMethodsUpdate);
     }
 
     internal void RegisterOnlineBehavior(OnlineBehavior onlineBehavior)
@@ -49,9 +50,13 @@ public class OnlineObjectManager : MonoBehaviour
     {
        foreach(var ob in m_onlineBehaviors)
         {
-            if(ob.NeedUpdate())
+            if(ob.NeedUpdateFields())
             {
-                SendOnlineBehaviorUpdate(ob); 
+                SendOnlineBehaviorFieldsUpdate(ob); 
+            }
+            if (ob.NeedUpdateMethods())
+            {
+                SendOnlineBehaviorMethodsUpdate(ob);
             }
         }
     }
@@ -140,7 +145,7 @@ public class OnlineObjectManager : MonoBehaviour
             }
         }
     }
-    private void RecvOnlineBehaviorUpdate(byte[] _msg)
+    private void RecvOnlineBehaviorFieldsUpdate(byte[] _msg)
     {
         using (MemoryStream m = new MemoryStream(_msg))
         {
@@ -155,7 +160,7 @@ public class OnlineObjectManager : MonoBehaviour
             }
         }
     }
-    private void SendOnlineBehaviorUpdate(OnlineBehavior _obj)
+    private void SendOnlineBehaviorFieldsUpdate(OnlineBehavior _obj)
     {
         using (MemoryStream m = new MemoryStream())
         {
@@ -163,7 +168,40 @@ public class OnlineObjectManager : MonoBehaviour
             {
                 w.Write(_obj.m_onlineIdentity.m_uid);
                 _obj.Write(w);
-                OnlineManager.Instance.SendMessage((byte)OnlineProtocol.Handler.ONLINE_OBJECT_UPDATE, m.GetBuffer());
+                OnlineManager.Instance.SendMessage((byte)OnlineProtocol.Handler.ONLINE_OBJECT_FIELDS, m.GetBuffer());
+            }
+        }
+    }
+
+
+    private void RecvOnlineBehaviorMethodsUpdate(byte[] _msg)
+    {
+        using (MemoryStream m = new MemoryStream(_msg))
+        {
+            using (BinaryReader r = new BinaryReader(m))
+            {
+                ulong uid = r.ReadUInt64();
+                var obj = m_onlineBehaviors.Find(ob => ob.m_onlineIdentity != null && ob.m_onlineIdentity.m_uid == uid);
+                //note : in case of parallel creation, we could receive msg before instanciation
+                //this should be buffered instead
+                if (obj != null)
+                {
+                    obj.ReadCMDs(r);
+                    obj.ReadRPCs(r);
+                }
+            }
+        }
+    }
+    private void SendOnlineBehaviorMethodsUpdate(OnlineBehavior _obj)
+    {
+        using (MemoryStream m = new MemoryStream())
+        {
+            using (BinaryWriter w = new BinaryWriter(m))
+            {
+                w.Write(_obj.m_onlineIdentity.m_uid);
+                _obj.WriteCMDs(w);
+                _obj.WriteRPCs(w);
+                OnlineManager.Instance.SendMessage((byte)OnlineProtocol.Handler.ONLINE_OBJECT_METHODS, m.GetBuffer());
             }
         }
     }

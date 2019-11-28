@@ -45,11 +45,11 @@ public abstract class OnlineBehavior : MonoBehaviour
             .Where(prop => Attribute.IsDefined(prop, typeof(RPC))).ToArray();
 
         m_cmds = GetType().GetMethods(BindingFlags.NonPublic
-        | BindingFlags.Public
-        | BindingFlags.FlattenHierarchy
-        | BindingFlags.Instance
-        | BindingFlags.Static)
-        .Where(prop => Attribute.IsDefined(prop, typeof(CMD))).ToArray();
+            | BindingFlags.Public
+            | BindingFlags.FlattenHierarchy
+            | BindingFlags.Instance
+            | BindingFlags.Static)
+            .Where(prop => Attribute.IsDefined(prop, typeof(CMD))).ToArray();
 
         OnlineObjectManager.Instance.RegisterOnlineBehavior(this);
 
@@ -73,16 +73,52 @@ public abstract class OnlineBehavior : MonoBehaviour
             return false;
         return m_onlineIdentity.HasAuthority();
     }
-    public bool NeedUpdate()
+    public bool NeedUpdateFields()
     {
         if (m_onlineIdentity == null)
             m_onlineIdentity = GetComponent<OnlineIdentity>();
 
         if (m_onlineIdentity == null)
             return false;
-        return m_onlineIdentity.HasAuthority() || OnlineManager.Instance.IsHost();
+        return m_onlineIdentity.HasAuthority();
     }
 
+       public void Write(BinaryWriter w)
+    {
+        foreach (var field in m_syncedFields)
+        {
+            Type type = field.FieldType;
+            FieldWriter fw;
+            if (m_FieldWriters.TryGetValue(type, out fw))
+            {
+                fw(field, w);
+            }
+        }
+    }
+
+    public void Read(BinaryReader r)
+    {
+        if (!HasAuthority())
+        {
+            foreach (var field in m_syncedFields)
+            {
+                Type type = field.FieldType;
+                FieldReader fr;
+                if (m_FieldReaders.TryGetValue(type, out fr))
+                {
+                    fr(field, r);
+                }
+            }
+        }
+        if (OnlineManager.Instance.IsHost())
+        {
+            ReadCMDs(r);
+        }
+        else
+        {
+            ReadRPCs(r);
+        }
+    }
     public void Call(string _fncName)
     {
         var rpc = Array.Find(m_rpcs, f => f.Name == _fncName);
@@ -111,52 +147,14 @@ public abstract class OnlineBehavior : MonoBehaviour
         }
     }
 
-    public void Write(BinaryWriter w)
+    public bool NeedUpdateMethods()
     {
-        if (HasAuthority())
-        {
-            foreach (var field in m_syncedFields)
-            {
-                Type type = field.FieldType;
-                FieldWriter fw;
-                if (m_FieldWriters.TryGetValue(type, out fw))
-                {
-                    fw(field, w);
-                }
-            }
-            if (!OnlineManager.Instance.IsHost())
-            {
-                WriteCMDs(w);
-            }
-        }
-        if(OnlineManager.Instance.IsHost())
-        {
-            WriteRPCs(w);
-        }
-    }
+        if (m_onlineIdentity == null)
+            m_onlineIdentity = GetComponent<OnlineIdentity>();
 
-    public void Read(BinaryReader r)
-    {
-        if (!HasAuthority())
-        {
-            foreach (var field in m_syncedFields)
-            {
-                Type type = field.FieldType;
-                FieldReader fr;
-                if (m_FieldReaders.TryGetValue(type, out fr))
-                {
-                    fr(field, r);
-                }
-            }
-        }
-        if (OnlineManager.Instance.IsHost())
-        {
-            ReadCMDs(r);
-        }
-        else
-        {
-            ReadRPCs(r);
-        }
+        if (m_onlineIdentity == null)
+            return false;
+        return m_pendingcmds.Count > 0 || m_pendingrpcs.Count > 0;
     }
     public void WriteRPCs(BinaryWriter w)
     {
