@@ -18,15 +18,20 @@ public abstract class OnlineBehavior : MonoBehaviour
 
     public OnlineIdentity m_onlineIdentity;
     private FieldInfo[] m_syncedFields;
-    public delegate void FieldReader(FieldInfo _f, BinaryReader _r);
-    private Dictionary<Type, FieldReader> m_FieldReaders = new Dictionary<Type, FieldReader>();
-    public delegate void FieldWriter(FieldInfo _f, BinaryWriter _w);
-    private Dictionary<Type, FieldWriter> m_FieldWriters = new Dictionary<Type, FieldWriter>();
+    public delegate object ObjectReader(object _o, BinaryReader _r);
+    public delegate void ObjectWriter(object _o, BinaryWriter _r);
+    private Dictionary<Type, ObjectReader> m_ObjectReaders = new Dictionary<Type, ObjectReader>();
+    private Dictionary<Type, ObjectWriter> m_ObjectWriter = new Dictionary<Type, ObjectWriter>();
 
+    class PendingMethod
+    {
+        public string name;
+        public object[] parameters;
+    }
     private MethodInfo[] m_cmds;
-    private List<string> m_pendingcmds = new List<string>();
+    private List<PendingMethod> m_pendingcmds = new List<PendingMethod>();
     private MethodInfo[] m_rpcs;
-    private List<string> m_pendingrpcs = new List<string>();
+    private List<PendingMethod> m_pendingrpcs = new List<PendingMethod>();
     public void Init()
     {
 
@@ -54,12 +59,12 @@ public abstract class OnlineBehavior : MonoBehaviour
         OnlineObjectManager.Instance.RegisterOnlineBehavior(this);
 
         //find OnlineIdentity Component
-        m_FieldReaders.Add(typeof(Vector3), ReadVector3);
-        m_FieldWriters.Add(typeof(Vector3), WriteVector3);
-        m_FieldReaders.Add(typeof(Quaternion), ReadQuaternion);
-        m_FieldWriters.Add(typeof(Quaternion), WriteQuaternion);
-        m_FieldReaders.Add(typeof(int), ReadInt);
-        m_FieldWriters.Add(typeof(int), WriteInt);
+        m_ObjectReaders.Add(typeof(Vector3), ReadVector3);
+        m_ObjectWriter.Add(typeof(Vector3), WriteVector3);
+        m_ObjectReaders.Add(typeof(Quaternion), ReadQuaternion);
+        m_ObjectWriter.Add(typeof(Quaternion), WriteQuaternion);
+        m_ObjectReaders.Add(typeof(int), ReadInt);
+        m_ObjectWriter.Add(typeof(int), WriteInt);
 
     }
 
@@ -88,10 +93,10 @@ public abstract class OnlineBehavior : MonoBehaviour
         foreach (var field in m_syncedFields)
         {
             Type type = field.FieldType;
-            FieldWriter fw;
-            if (m_FieldWriters.TryGetValue(type, out fw))
+            ObjectWriter ow;
+            if (m_ObjectWriter.TryGetValue(type, out ow))
             {
-                fw(field, w);
+                ow(field.GetValue(this), w);
             }
         }
     }
@@ -103,10 +108,10 @@ public abstract class OnlineBehavior : MonoBehaviour
             foreach (var field in m_syncedFields)
             {
                 Type type = field.FieldType;
-                FieldReader fr;
-                if (m_FieldReaders.TryGetValue(type, out fr))
+                ObjectReader or;
+                if (m_ObjectReaders.TryGetValue(type, out or))
                 {
-                    fr(field, r);
+                    field.SetValue(this, or(field.GetValue(this), r));
                 }
             }
         }
@@ -121,13 +126,24 @@ public abstract class OnlineBehavior : MonoBehaviour
     }
     public void Call(string _fncName)
     {
+        Call(_fncName, new object[0]);
+    }
+    public void Call(string _fncName, object[] parameters )
+    {
         var rpc = Array.Find(m_rpcs, f => f.Name == _fncName);
         if (rpc != null)
         {
             if(OnlineManager.Instance.IsHost())
             {
-                m_pendingrpcs.Add(_fncName);
-                rpc.Invoke(this, new object[0]);
+                if (rpc.GetParameters().Count() != parameters.Count())
+                {
+                    Console.Error.WriteLine("wrong parameters size for " + _fncName);
+                }
+                else
+                {
+                    m_pendingrpcs.Add(new PendingMethod() { name = _fncName, parameters = parameters });
+                    rpc.Invoke(this, parameters);
+                }
             }
         }
         var cmd = Array.Find(m_cmds, f => f.Name == _fncName);
@@ -135,13 +151,20 @@ public abstract class OnlineBehavior : MonoBehaviour
         {
             if (HasAuthority())
             {
-                if (OnlineManager.Instance.IsHost())
+                if (cmd.GetParameters().Count() != parameters.Count())
                 {
-                    cmd.Invoke(this, new object[0]);
+                    Console.Error.WriteLine("wrong parameters size for " + _fncName);
                 }
                 else
                 {
-                    m_pendingcmds.Add(_fncName);
+                    if (OnlineManager.Instance.IsHost())
+                    {
+                        cmd.Invoke(this, parameters);
+                    }
+                    else
+                    {
+                        m_pendingcmds.Add(new PendingMethod() { name = _fncName, parameters = parameters });
+                    }
                 }
             }
         }
@@ -161,7 +184,17 @@ public abstract class OnlineBehavior : MonoBehaviour
         w.Write(m_pendingrpcs.Count);
         foreach(var rpc in m_pendingrpcs)
         {
-            w.Write(rpc);
+            w.Write(rpc.name);
+            w.Write(rpc.parameters.Count());
+            foreach(object obj in rpc.parameters)
+            {
+                Type type = obj.GetType();
+                ObjectWriter ow;
+                if (m_ObjectWriter.TryGetValue(type, out ow))
+                {
+                    ow(obj, w);
+                }
+            }
         }
         m_pendingrpcs.Clear();
      }
@@ -170,7 +203,17 @@ public abstract class OnlineBehavior : MonoBehaviour
         w.Write(m_pendingcmds.Count);
         foreach (var cmd in m_pendingcmds)
         {
-            w.Write(cmd);
+            w.Write(cmd.name);
+            w.Write(cmd.parameters.Count());
+            foreach (object obj in cmd.parameters)
+            {
+                Type type = obj.GetType();
+                ObjectWriter ow;
+                if (m_ObjectWriter.TryGetValue(type, out ow))
+                {
+                    ow(obj, w);
+                }
+            }
         }
         m_pendingcmds.Clear();
     }
@@ -182,11 +225,30 @@ public abstract class OnlineBehavior : MonoBehaviour
         {
             string name = r.ReadString();
             var rpc = Array.Find(m_rpcs, f => f.Name == name);
+            int paramCount = r.ReadInt32();
+            object[] parameters = new object[paramCount];
             if (rpc != null)
             {
                 if (OnlineManager.Instance.IsHost())
                 {
-                    rpc.Invoke(this, new object[0]);
+                    if (rpc.GetParameters().Count() != paramCount)
+                    {
+                        Console.Error.WriteLine("wrong parameters size for " + name);
+                    }
+                    else
+                    {
+                        int paramI = 0;
+                        foreach(var param in rpc.GetParameters())
+                        {
+                            Type type = param.GetType();
+                            ObjectReader or;
+                            if (m_ObjectReaders.TryGetValue(type, out or))
+                            {
+                               parameters[paramI] =  or(this, r);
+                            }
+                        }
+                        rpc.Invoke(this, parameters); ;
+                    }
                 }
             }
         }
@@ -198,57 +260,77 @@ public abstract class OnlineBehavior : MonoBehaviour
         {
             string name = r.ReadString();
             var cmd = Array.Find(m_cmds, f => f.Name == name);
+            int paramCount = r.ReadInt32();
+            object[] parameters = new object[paramCount];
             if (cmd != null)
             {
                 if (OnlineManager.Instance.IsHost())
                 {
-                    cmd.Invoke(this, new object[0]);
+                    if (cmd.GetParameters().Count() != paramCount)
+                    {
+                        Console.Error.WriteLine("wrong parameters size for " + name);
+                    }
+                    else
+                    {
+                        int paramI = 0;
+                        foreach (var param in cmd.GetParameters())
+                        {
+                            Type type = param.GetType();
+                            ObjectReader or;
+                            if (m_ObjectReaders.TryGetValue(type, out or))
+                            {
+                                parameters[paramI] = or(this, r);
+                            }
+                        }
+                        cmd.Invoke(this, parameters); ;
+                    }
                 }
             }
         }
     }
-    private void WriteVector3(FieldInfo _f, BinaryWriter _w)
+    private void WriteVector3(object _obj, BinaryWriter _w)
     {
-        var v = (Vector3)_f.GetValue(this);
+        var v = (Vector3)_obj;
         _w.Write(v.x);
         _w.Write(v.y);
         _w.Write(v.z);
     }
-    private void ReadVector3(FieldInfo _f, BinaryReader _r)
+    private object ReadVector3(object _obj, BinaryReader _r)
     {
-        var v = (Vector3)_f.GetValue(this);
+        var v = (Vector3)_obj;
         v.x = _r.ReadSingle(); 
         v.y = _r.ReadSingle(); 
-        v.z = _r.ReadSingle(); 
-        _f.SetValue(this, v);
+        v.z = _r.ReadSingle();
+        return v;
     }
-    private void WriteQuaternion(FieldInfo _f, BinaryWriter _w)
+    private void WriteQuaternion(object _obj, BinaryWriter _w)
     {
-        var q = (Quaternion)_f.GetValue(this);
+        var q = (Quaternion)_obj;
         _w.Write(q.x);
         _w.Write(q.y);
         _w.Write(q.z);
         _w.Write(q.w);
     }
-    private void ReadQuaternion(FieldInfo _f, BinaryReader _r)
+    private object ReadQuaternion(object _obj, BinaryReader _r)
     {
-        var q = (Quaternion)_f.GetValue(this);
+        var q = (Quaternion)_obj;
         q.x = _r.ReadSingle();
         q.y = _r.ReadSingle();
         q.z = _r.ReadSingle();
         q.w = _r.ReadSingle();
-        _f.SetValue(this, q);
+        return q;
     }
-    private void WriteInt(FieldInfo _f , BinaryWriter _w)
+    private void WriteInt(object _obj, BinaryWriter _w)
     {
-        var t = (int)_f.GetValue(this);
+        var t = (int)_obj;
         _w.Write(t);
     }
 
  
     
-    private void ReadInt(FieldInfo _f, BinaryReader _r)
+    private object ReadInt(object _obj, BinaryReader _r)
     {
-        _f.SetValue(this, _r.ReadInt32());
+        int i =  _r.ReadInt32();
+        return i;
     }
 }
