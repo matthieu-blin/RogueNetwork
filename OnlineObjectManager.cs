@@ -38,6 +38,7 @@ public class OnlineObjectManager : MonoBehaviour
 
     internal void RegisterOnlineBehavior(OnlineBehavior onlineBehavior)
     {
+        onlineBehavior.m_index = m_onlineBehaviors.Count;
         m_onlineBehaviors.Add(onlineBehavior);
     }
 
@@ -48,11 +49,11 @@ public class OnlineObjectManager : MonoBehaviour
     // Update is called once per frame
     void Update()
     {
-       foreach(var ob in m_onlineBehaviors)
+        foreach (var ob in m_onlineBehaviors)
         {
-            if(ob.NeedUpdateFields())
+            if (ob.NeedUpdateFields())
             {
-                SendOnlineBehaviorFieldsUpdate(ob); 
+                SendOnlineBehaviorFieldsUpdate(ob);
             }
             if (ob.NeedUpdateMethods())
             {
@@ -108,6 +109,7 @@ public class OnlineObjectManager : MonoBehaviour
                 byte type = r.ReadByte();
                 string name = r.ReadString();
                 ulong uid = r.ReadUInt64();
+                uint playerID = r.ReadUInt32();
 
                 switch((OnlineIdentity.Type)type)
                 {
@@ -116,15 +118,19 @@ public class OnlineObjectManager : MonoBehaviour
                             //search for current parent path
                             GameObject obj = m_staticObject.Find(go => go.name == name);
                             obj.GetComponent<OnlineIdentity>().m_uid = uid;
+                            obj.GetComponent<OnlineIdentity>().m_localPlayerAuthority = playerID;
                             obj.SetActive(true);
                             break;
                         }
                     case OnlineIdentity.Type.Dynamic:
                         {
+                            Vector3 position = new Vector3(r.ReadSingle(), r.ReadSingle(), r.ReadSingle());
+                            Quaternion rotation = new Quaternion(r.ReadSingle(), r.ReadSingle(), r.ReadSingle(), r.ReadSingle());
                             GameObject obj = Array.Find(m_DynamicObject, go => go.name == name);
-                            GameObject newObj = Instantiate(obj);
+                            GameObject newObj = Instantiate(obj, position, rotation);
                             newObj.GetComponent<OnlineIdentity>().m_srcName = name;
                             newObj.GetComponent<OnlineIdentity>().m_uid = uid;
+                            newObj.GetComponent<OnlineIdentity>().m_localPlayerAuthority = playerID;
                             break;
                         }
 
@@ -133,14 +139,25 @@ public class OnlineObjectManager : MonoBehaviour
         }
     }
     private void SendOnlineObject(GameObject _obj)
-    {
-        using (MemoryStream m = new MemoryStream())
+    { 
+         using (MemoryStream m = new MemoryStream())
         {
             using (BinaryWriter w = new BinaryWriter(m))
             {
                 w.Write((byte)_obj.GetComponent<OnlineIdentity>().m_type);
                 w.Write(_obj.GetComponent<OnlineIdentity>().m_srcName);
                 w.Write(_obj.GetComponent<OnlineIdentity>().m_uid);
+                w.Write(_obj.GetComponent<OnlineIdentity>().m_localPlayerAuthority);
+                if (_obj.GetComponent<OnlineIdentity>().m_type == OnlineIdentity.Type.Dynamic)
+                {
+                    w.Write(_obj.transform.position.x);
+                    w.Write(_obj.transform.position.y);
+                    w.Write(_obj.transform.position.z);
+                    w.Write(_obj.transform.rotation.x);
+                    w.Write(_obj.transform.rotation.y);
+                    w.Write(_obj.transform.rotation.z);
+                    w.Write(_obj.transform.rotation.w);
+                }
                 OnlineManager.Instance.SendMessage((byte)OnlineProtocol.Handler.ONLINE_OBJECT, m.GetBuffer());
             }
         }
@@ -152,7 +169,8 @@ public class OnlineObjectManager : MonoBehaviour
             using (BinaryReader r = new BinaryReader(m))
             {
                 ulong uid = r.ReadUInt64();
-                var obj = m_onlineBehaviors.Find(ob => ob.m_onlineIdentity != null && ob.m_onlineIdentity.m_uid == uid);
+                int index = r.ReadInt32();
+                var obj = m_onlineBehaviors.Find(ob => ob.m_onlineIdentity != null && ob.m_onlineIdentity.m_uid == uid && ob.m_index == index);
                 //note : in case of parallel creation, we could receive msg before instanciation
                 //this should be buffered instead
                 if(obj != null)
@@ -167,6 +185,7 @@ public class OnlineObjectManager : MonoBehaviour
             using (BinaryWriter w = new BinaryWriter(m))
             {
                 w.Write(_obj.m_onlineIdentity.m_uid);
+                w.Write(_obj.m_index);
                 _obj.Write(w);
                 OnlineManager.Instance.SendMessage((byte)OnlineProtocol.Handler.ONLINE_OBJECT_FIELDS, m.GetBuffer());
             }
@@ -181,7 +200,8 @@ public class OnlineObjectManager : MonoBehaviour
             using (BinaryReader r = new BinaryReader(m))
             {
                 ulong uid = r.ReadUInt64();
-                var obj = m_onlineBehaviors.Find(ob => ob.m_onlineIdentity != null && ob.m_onlineIdentity.m_uid == uid);
+                int index = r.ReadInt32();
+                var obj = m_onlineBehaviors.Find(ob => ob.m_onlineIdentity != null && ob.m_onlineIdentity.m_uid == uid && ob.m_index == index);
                 //note : in case of parallel creation, we could receive msg before instanciation
                 //this should be buffered instead
                 if (obj != null)
@@ -199,6 +219,7 @@ public class OnlineObjectManager : MonoBehaviour
             using (BinaryWriter w = new BinaryWriter(m))
             {
                 w.Write(_obj.m_onlineIdentity.m_uid);
+                w.Write(_obj.m_index);
                 _obj.WriteCMDs(w);
                 _obj.WriteRPCs(w);
                 OnlineManager.Instance.SendMessage((byte)OnlineProtocol.Handler.ONLINE_OBJECT_METHODS, m.GetBuffer());

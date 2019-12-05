@@ -51,7 +51,14 @@ namespace Assets
             {
                 foreach(Message msg in m_pendingMessages)
                 {
-                    OnMessageReceived(msg);
+                    try
+                    {
+                        OnMessageReceived(msg);
+                    }
+                    catch(Exception ex)
+                    {
+                        Log("error reading msg " + ex.ToString());
+                    }
                 }
                 m_pendingMessages.Clear();
             }
@@ -243,7 +250,7 @@ namespace Assets
             client.m_Thread = new Thread(() =>
             {
                 //accept new client - blocking function
-                byte[] bytes = new byte[BufferSize];
+                byte[] bytes = new byte[BufferSize]; 
                 while (true)
                 {
                     //blocking function

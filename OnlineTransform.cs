@@ -26,6 +26,8 @@ public class OnlineTransform : OnlineBehavior
     Remotetransform remoteA = null;
     Remotetransform remoteB = null;
 
+    Vector3 m_lastPosition = new Vector3();
+    Quaternion m_lastRotation = new Quaternion();
 
     public OnlineTransform()
     {
@@ -36,6 +38,8 @@ public class OnlineTransform : OnlineBehavior
     {
         pos = transform.position;
         rot = transform.rotation;
+        m_lastPosition = pos;
+        m_lastRotation = rot;
         remoteA = new Remotetransform() { tick = 0, pos = this.pos, rot = this.rot };
         remoteB = new Remotetransform() { tick = 0, pos = this.pos, rot = this.rot };
         Init();
@@ -49,7 +53,7 @@ public class OnlineTransform : OnlineBehavior
 
         //lerp between remoteA and b
         int deltaTick = remoteB.tick - remoteA.tick;
-        if(deltaTick == 0)
+        if (deltaTick == 0)
         {
             if (!UpdateRemotePoints())
                 return;
@@ -60,11 +64,11 @@ public class OnlineTransform : OnlineBehavior
             deltaTimeCumulative += dt;
             if (deltaTimeCumulative > deltaTick * Time.fixedDeltaTime)
             {
-                if(UpdateRemotePoints())
+                if (UpdateRemotePoints())
                 {
                     deltaTimeCumulative -= deltaTick * Time.fixedDeltaTime; ;
                 }
-                
+
             }
         }
         deltaTick = remoteB.tick - remoteA.tick;
@@ -77,6 +81,10 @@ public class OnlineTransform : OnlineBehavior
 
     }
 
+    public override bool NeedSync()
+    {
+             return true;
+    }
     bool UpdateRemotePoints()
     {
         //check if we have more up to date remote point

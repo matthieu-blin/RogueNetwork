@@ -13,12 +13,14 @@ public class Sync : Attribute{}
 public class CMD : Attribute { }
 [AttributeUsage(AttributeTargets.Method, AllowMultiple = true)]
 public class RPC : Attribute { }
+
+
 public abstract class OnlineBehavior : MonoBehaviour
 {
-
+    public int m_index = 0;
     public OnlineIdentity m_onlineIdentity;
     private FieldInfo[] m_syncedFields;
-    public delegate object ObjectReader(object _o, BinaryReader _r);
+    public delegate object ObjectReader(BinaryReader _r);
     public delegate void ObjectWriter(object _o, BinaryWriter _r);
     private Dictionary<Type, ObjectReader> m_ObjectReaders = new Dictionary<Type, ObjectReader>();
     private Dictionary<Type, ObjectWriter> m_ObjectWriter = new Dictionary<Type, ObjectWriter>();
@@ -85,10 +87,18 @@ public abstract class OnlineBehavior : MonoBehaviour
 
         if (m_onlineIdentity == null)
             return false;
-        return m_onlineIdentity.HasAuthority();
-    }
 
-       public void Write(BinaryWriter w)
+        if(m_onlineIdentity.HasAuthority())
+        {
+            if (m_syncedFields.Count() > 0)
+            {
+                return NeedSync();
+            }
+        }
+        return false;
+    }
+    public virtual bool NeedSync() { return false; }
+    public void Write(BinaryWriter w)
     {
         foreach (var field in m_syncedFields)
         {
@@ -111,7 +121,7 @@ public abstract class OnlineBehavior : MonoBehaviour
                 ObjectReader or;
                 if (m_ObjectReaders.TryGetValue(type, out or))
                 {
-                    field.SetValue(this, or(field.GetValue(this), r));
+                    field.SetValue(this, or(r));
                 }
             }
         }
@@ -229,8 +239,7 @@ public abstract class OnlineBehavior : MonoBehaviour
             object[] parameters = new object[paramCount];
             if (rpc != null)
             {
-                if (OnlineManager.Instance.IsHost())
-                {
+               
                     if (rpc.GetParameters().Count() != paramCount)
                     {
                         Console.Error.WriteLine("wrong parameters size for " + name);
@@ -240,16 +249,17 @@ public abstract class OnlineBehavior : MonoBehaviour
                         int paramI = 0;
                         foreach(var param in rpc.GetParameters())
                         {
-                            Type type = param.GetType();
+                            Type type = param.ParameterType;
                             ObjectReader or;
                             if (m_ObjectReaders.TryGetValue(type, out or))
                             {
-                               parameters[paramI] =  or(this, r);
+                               parameters[paramI] =  or(r);
                             }
+                            paramI++;
                         }
                         rpc.Invoke(this, parameters); ;
                     }
-                }
+                
             }
         }
     }
@@ -264,8 +274,7 @@ public abstract class OnlineBehavior : MonoBehaviour
             object[] parameters = new object[paramCount];
             if (cmd != null)
             {
-                if (OnlineManager.Instance.IsHost())
-                {
+                
                     if (cmd.GetParameters().Count() != paramCount)
                     {
                         Console.Error.WriteLine("wrong parameters size for " + name);
@@ -275,16 +284,17 @@ public abstract class OnlineBehavior : MonoBehaviour
                         int paramI = 0;
                         foreach (var param in cmd.GetParameters())
                         {
-                            Type type = param.GetType();
+                            Type type = param.ParameterType;
                             ObjectReader or;
                             if (m_ObjectReaders.TryGetValue(type, out or))
                             {
-                                parameters[paramI] = or(this, r);
+                                parameters[paramI] = or(r);
                             }
-                        }
+                            paramI++;
+                    }
                         cmd.Invoke(this, parameters); ;
                     }
-                }
+                
             }
         }
     }
@@ -295,9 +305,9 @@ public abstract class OnlineBehavior : MonoBehaviour
         _w.Write(v.y);
         _w.Write(v.z);
     }
-    private object ReadVector3(object _obj, BinaryReader _r)
+    private object ReadVector3( BinaryReader _r)
     {
-        var v = (Vector3)_obj;
+        var v = new Vector3();
         v.x = _r.ReadSingle(); 
         v.y = _r.ReadSingle(); 
         v.z = _r.ReadSingle();
@@ -311,9 +321,9 @@ public abstract class OnlineBehavior : MonoBehaviour
         _w.Write(q.z);
         _w.Write(q.w);
     }
-    private object ReadQuaternion(object _obj, BinaryReader _r)
+    private object ReadQuaternion( BinaryReader _r)
     {
-        var q = (Quaternion)_obj;
+        var q = new Quaternion();
         q.x = _r.ReadSingle();
         q.y = _r.ReadSingle();
         q.z = _r.ReadSingle();
@@ -328,7 +338,7 @@ public abstract class OnlineBehavior : MonoBehaviour
 
  
     
-    private object ReadInt(object _obj, BinaryReader _r)
+    private object ReadInt( BinaryReader _r)
     {
         int i =  _r.ReadInt32();
         return i;
