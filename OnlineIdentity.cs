@@ -22,6 +22,31 @@ public class OnlineIdentity : MonoBehaviour
     public Type m_type = Type.Static;
 
     // Start is called before the first frame update
+    void Awake()
+    {
+        switch (m_type)
+        {
+            case Type.HostOnly:
+                {
+                    break;
+                }
+            case Type.Dynamic:
+                {
+                    break;
+                }
+            case Type.Static:
+                {
+                    OnlineObjectManager.Instance.RegisterStaticObject(gameObject);
+                    break;
+                }
+            case Type.Determinist:
+                {
+                    //check if uid is correctly setted and is determinist
+                    break;
+                }
+        }
+
+    }
     void Start()
     {
         switch (m_type)
@@ -46,7 +71,6 @@ public class OnlineIdentity : MonoBehaviour
                 }
             case Type.Static:
                 {
-                    OnlineObjectManager.Instance.RegisterStaticObject(gameObject);
                     m_srcName = transform.name;
                     if (OnlineManager.Instance.IsHost())
                     {
@@ -66,6 +90,7 @@ public class OnlineIdentity : MonoBehaviour
         }
 
     }
+
 
     public bool HasAuthority()
     {

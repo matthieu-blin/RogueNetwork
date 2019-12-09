@@ -58,6 +58,7 @@ public abstract class OnlineBehavior : MonoBehaviour
             | BindingFlags.Static)
             .Where(prop => Attribute.IsDefined(prop, typeof(CMD))).ToArray();
 
+         m_onlineIdentity = GetComponent<OnlineIdentity>();
         OnlineObjectManager.Instance.RegisterOnlineBehavior(this);
 
         //find OnlineIdentity Component
@@ -182,8 +183,6 @@ public abstract class OnlineBehavior : MonoBehaviour
 
     public bool NeedUpdateMethods()
     {
-        if (m_onlineIdentity == null)
-            m_onlineIdentity = GetComponent<OnlineIdentity>();
 
         if (m_onlineIdentity == null)
             return false;

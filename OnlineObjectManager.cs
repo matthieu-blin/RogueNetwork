@@ -97,6 +97,8 @@ public class OnlineObjectManager : MonoBehaviour
     }
     public void RegisterStaticObject(GameObject _obj)
     {
+        m_IDGenerator++;
+        _obj.GetComponent<OnlineIdentity>().m_uid = m_IDGenerator;
         m_staticObject.Add(_obj);
     }
  
