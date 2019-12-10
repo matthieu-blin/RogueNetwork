@@ -38,7 +38,11 @@ public class OnlineObjectManager : MonoBehaviour
 
     internal void RegisterOnlineBehavior(OnlineBehavior onlineBehavior)
     {
-        onlineBehavior.m_index = m_onlineBehaviors.Count;
+        var sameObject = m_onlineBehaviors.FindAll(ob => ob.gameObject == onlineBehavior.gameObject);
+        if (sameObject != null)
+            onlineBehavior.m_index = sameObject.Count;
+        else
+            onlineBehavior.m_index = 0;
         m_onlineBehaviors.Add(onlineBehavior);
     }
 
