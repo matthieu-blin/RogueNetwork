@@ -98,7 +98,7 @@ public abstract class OnlineBehavior : MonoBehaviour
         }
         return false;
     }
-    public virtual bool NeedSync() { return false; }
+    public virtual bool NeedSync() { return true; }
     public void Write(BinaryWriter w)
     {
         foreach (var field in m_syncedFields)
