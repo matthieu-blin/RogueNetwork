@@ -112,4 +112,33 @@ public class OnlineIdentity : MonoBehaviour
     {
         
     }
+
+    private void OnDestroy()
+    {
+        switch (m_type)
+        {
+            case Type.HostOnly:
+                {
+                    break;
+                }
+            case Type.Dynamic:
+                {
+                    if (m_uid != 0) 
+                    {
+                        OnlineObjectManager.Instance.Despawn(gameObject);
+                        return;
+                    }
+                    break;
+                }
+            case Type.Static:
+                {
+                    break;
+                }
+            case Type.Determinist:
+                {
+                    //check if uid is correctly setted and is determinist
+                    break;
+                }
+        }
+    }
 }
