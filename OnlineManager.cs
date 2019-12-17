@@ -129,17 +129,20 @@ public class OnlineManager : MonoBehaviour
         {
             using(BinaryReader r = new BinaryReader(m))
             {
-                byte handlerType = r.ReadByte();
-                int size = r.ReadInt32();
-                byte[] buffer = r.ReadBytes(size);
-                GameMessageCallback cb;
-                if (m_MessageCallbacksHandler.TryGetValue(handlerType, out cb))
+                while (r.BaseStream.Position != r.BaseStream.Length)
                 {
-                    cb(buffer);
-                }
-                else
-                {
-                    Log("Unhandled Message");
+                    byte handlerType = r.ReadByte();
+                    int size = r.ReadInt32();
+                    byte[] buffer = r.ReadBytes(size);
+                    GameMessageCallback cb;
+                    if (m_MessageCallbacksHandler.TryGetValue(handlerType, out cb))
+                    {
+                        cb(buffer);
+                    }
+                    else
+                    {
+                        Log("Unhandled Message");
+                    }
                 }
             }
         }
