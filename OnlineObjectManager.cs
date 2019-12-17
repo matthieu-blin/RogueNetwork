@@ -194,6 +194,7 @@ public class OnlineObjectManager : MonoBehaviour
                     case OnlineIdentity.Type.Dynamic:
                         {
                             GameObject obj = m_DynamicObjectInstances.Find(go => go.GetComponent<OnlineIdentity>().m_uid == uid);
+                            m_DynamicObjectInstances.Remove(obj);
                             Destroy(obj);
                             break;
                         }
