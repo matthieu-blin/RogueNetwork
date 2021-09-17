@@ -4,31 +4,37 @@ using System.Collections.Generic;
 using System.IO;
 using UnityEngine;
 
+/// <summary>
+///  Singleton Component, don't destroy on load
+/// Require OnlineManager and OnlinePlayerManager instanciated, and should be udpated after them
+/// Add automatic replication features to your component scripting
+/// @see OnlineBehavior for more information about field and RPC synchronisation
+///
+/// How to use Online Spawning
+/// There's 2 types of Online spawning behavior :
+/// -Static : your objects are spawned by the unity scene system :
+///     -They should have a fixed OnlineIdentity (static or determinist) to be able to communicate between source/replica
+///     -They will be active ONLY when host load them (and host MUST LOAD SCENE FIRST)
+/// -Dynamic : your objects will be instanciated by script (using prefab)
+///     -Your prefab should have a Dynamic OnlineIdentity
+///     -Your prefab should be registered in the DynamicObject List via editor
+///     -Instead of using GameObject.Instanciate, use OnlineObject.Instanciate then use OnlineObject.Spawn 
+/// </summary>
 public class OnlineObjectManager : MonoBehaviour
 {
-    private static OnlineObjectManager instance = null;
+    private uint m_IDGenerator = 0;
     public GameObject[] m_DynamicObject = new GameObject[0];
     private List<GameObject> m_DynamicObjectInstances = new List<GameObject>();
-    private List<GameObject> m_staticObject = new List<GameObject>();
-    private uint m_IDGenerator = 0;
-    private List<OnlineBehavior> m_onlineBehaviors = new List<OnlineBehavior>();
-    public static OnlineObjectManager Instance
-    {
-        get
-        {
-            return instance;
-        }
-    }
+    private List<GameObject> m_StaticObject = new List<GameObject>();
+    private List<OnlineBehavior> m_OnlineBehaviors = new List<OnlineBehavior>();
+    //Singleton
+    public static OnlineObjectManager Instance { get; private set; } = null;
     public void Awake()
     {
-        instance = this;
+        Instance = this;
         DontDestroyOnLoad(this);
     }
 
-    public ulong ComputeDeterministID(uint _id)
-    {
-        return (1 << 32) + _id;
-    }
     // Start is called before the first frame update
     void Start()
     {
@@ -40,22 +46,22 @@ public class OnlineObjectManager : MonoBehaviour
 
     internal void RegisterOnlineBehavior(OnlineBehavior onlineBehavior)
     {
-        var sameObject = m_onlineBehaviors.FindAll(ob => ob.gameObject == onlineBehavior.gameObject);
+        var sameObject = m_OnlineBehaviors.FindAll(ob => ob.gameObject == onlineBehavior.gameObject);
         if (sameObject != null)
             onlineBehavior.m_index = sameObject.Count;
         else
             onlineBehavior.m_index = 0;
-        m_onlineBehaviors.Add(onlineBehavior);
+        m_OnlineBehaviors.Add(onlineBehavior);
     }
 
     internal void UnregisterOnlineBehavior(OnlineBehavior onlineBehavior)
     {
-        m_onlineBehaviors.Remove(onlineBehavior);
+        m_OnlineBehaviors.Remove(onlineBehavior);
     }
     // Update is called once per frame
     void Update()
     {
-        foreach (var ob in m_onlineBehaviors)
+        foreach (var ob in m_OnlineBehaviors)
         {
             if (ob.NeedUpdateFields())
             {
@@ -89,8 +95,9 @@ public class OnlineObjectManager : MonoBehaviour
         return newObj;
     }
 
-
-    //gameobject should have been instanciate using OnlineObjectManager.Instanciate
+   //Spawn will be automatically called on gameObject with OnlineId set to Static
+    //Object should have been created using OnlineObject.Instanciate
+    //do not call this except if you know exactly what you're doing
     public void Spawn(GameObject _obj)
     {
         if (!OnlineManager.Instance.IsHost())
@@ -100,17 +107,22 @@ public class OnlineObjectManager : MonoBehaviour
         SendOnlineObject(_obj);
     }
 
+    //this is handled by OnlineIdentity
+    //Despawn will be automatically called on gameObject with OnlineId destruction
+    //do not call this except if you know exactly what you're doing
     public void Despawn(GameObject _obj)
     {
         if (!OnlineManager.Instance.IsHost())
             return;
         SendOnlineObjectDestroy(_obj);
     }
+    //this is handled by OnlineIdentity
+    //do not call this except if you know exactly what you're doing
     public void RegisterStaticObject(GameObject _obj)
     {
         m_IDGenerator++;
         _obj.GetComponent<OnlineIdentity>().m_uid = m_IDGenerator;
-        m_staticObject.Add(_obj);
+        m_StaticObject.Add(_obj);
     }
     private void RecvOnlineObject(byte[] _msg)
     {
@@ -128,7 +140,7 @@ public class OnlineObjectManager : MonoBehaviour
                     case OnlineIdentity.Type.Static:
                         {
                             //search for current parent path
-                            GameObject obj = m_staticObject.Find(go => go.name == name);
+                            GameObject obj = m_StaticObject.Find(go => go.name == name);
                             obj.GetComponent<OnlineIdentity>().m_uid = uid;
                             obj.GetComponent<OnlineIdentity>().m_localPlayerAuthority = playerID;
                             obj.SetActive(true);
@@ -225,7 +237,7 @@ public class OnlineObjectManager : MonoBehaviour
             {
                 ulong uid = r.ReadUInt64();
                 int index = r.ReadInt32();
-                var obj = m_onlineBehaviors.Find(ob => ob.m_onlineIdentity != null && ob.m_onlineIdentity.m_uid == uid && ob.m_index == index);
+                var obj = m_OnlineBehaviors.Find(ob => ob.m_onlineIdentity != null && ob.m_onlineIdentity.m_uid == uid && ob.m_index == index);
                 //note : in case of parallel creation, we could receive msg before instanciation
                 //this should be buffered instead
                 if(obj != null)
@@ -256,7 +268,7 @@ public class OnlineObjectManager : MonoBehaviour
             {
                 ulong uid = r.ReadUInt64();
                 int index = r.ReadInt32();
-                var obj = m_onlineBehaviors.Find(ob => ob.m_onlineIdentity != null && ob.m_onlineIdentity.m_uid == uid && ob.m_index == index);
+                var obj = m_OnlineBehaviors.Find(ob => ob.m_onlineIdentity != null && ob.m_onlineIdentity.m_uid == uid && ob.m_index == index);
                 //note : in case of parallel creation, we could receive msg before instanciation
                 //this should be buffered instead
                 if (obj != null)
@@ -282,3 +294,26 @@ public class OnlineObjectManager : MonoBehaviour
         }
     }
 }
+
+//static shortcut to OnlineObjectManager method
+public class OnlineObject
+{
+    public static GameObject Instanciate(string _name) { return OnlineObjectManager.Instance.Instanciate(_name); }
+    public static GameObject Instanciate(GameObject _prefab, Vector3 _pos, Quaternion _rot, uint _playerID = 0)
+    {
+        return OnlineObjectManager.Instance.Instanciate(_prefab, _pos, _rot, _playerID);
+    }
+    /// <summary>
+    /// Call this function Only on a Dynamic online object, after a successfull OnlineObject.Instanciate
+    /// </summary>
+    public static void Spawn(GameObject _obj) {  OnlineObjectManager.Instance.Spawn(_obj); }
+    //very stupid determinist id for now
+    //TODO : should check other ID to avoid collision
+    public static ulong ComputeDeterministID(uint _id)
+    {
+        return (1 << 32) + _id;
+    }
+
+
+ }
+    

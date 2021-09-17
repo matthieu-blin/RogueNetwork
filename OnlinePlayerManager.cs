@@ -1,27 +1,23 @@
-﻿using System.Collections;
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.IO;
 using System.Net;
-using System.Net.Sockets;
-using System.Runtime.InteropServices;
 using System.Runtime.Serialization;
 using System.Runtime.Serialization.Formatters.Binary;
 using UnityEngine;
 
+/// <summary>
+///  Singleton Component, don't destroy on load
+/// Require OnlineManager instanciated, and should be udpated after it
+/// This component associate an unique ID to an Online Player 
+/// You can retrieve the specific endpoint for a given player 
+///
+/// </summary>
 public class OnlinePlayerManager : MonoBehaviour
 {
-
-    private static OnlinePlayerManager instance = null;
-    public static OnlinePlayerManager Instance
-    {
-        get
-        {
-            return instance;
-        }
-    }
+    public static OnlinePlayerManager Instance { get; private set; } = null;
     public void Awake()
     {
-        instance = this;
+        Instance = this;
         DontDestroyOnLoad(this);
     }
 
@@ -84,17 +80,17 @@ public class OnlinePlayerManager : MonoBehaviour
             {
                 m_players.Clear();
                 int count = w.ReadInt32();
-                for(int i = 0; i < count; i++)
+                for (int i = 0; i < count; i++)
                 {
                     Player player = new Player();
                     BinaryFormatter formatter = new BinaryFormatter();
                     try
                     {
-                        player.m_endpoint = (EndPoint) formatter.Deserialize(m);
+                        player.m_endpoint = (EndPoint)formatter.Deserialize(m);
                     }
                     catch (SerializationException e)
                     {
-                        OnlineManager.Instance.Log("Failed to deserialize. Reason: " + e.Message);
+                        OnlineManager.Log("Failed to deserialize. Reason: " + e.Message);
                     }
                     player.m_ID = w.ReadUInt32();
                     m_players.Add(player);
@@ -106,7 +102,6 @@ public class OnlinePlayerManager : MonoBehaviour
         if (index >= 0)
         {
             m_localPlayerID = m_players[index].m_ID;
-
         }
 
     }
@@ -117,7 +112,7 @@ public class OnlinePlayerManager : MonoBehaviour
             using (BinaryWriter w = new BinaryWriter(m))
             {
                 w.Write(m_players.Count);
-                foreach(var player in m_players)
+                foreach (var player in m_players)
                 {
                     BinaryFormatter formatter = new BinaryFormatter();
                     try
@@ -126,7 +121,7 @@ public class OnlinePlayerManager : MonoBehaviour
                     }
                     catch (SerializationException e)
                     {
-                        OnlineManager.Instance.Log("Failed to serialize. Reason: " + e.Message);
+                        OnlineManager.Log("Failed to serialize. Reason: " + e.Message);
                     }
                     w.Write(player.m_ID);
                 }
@@ -134,5 +129,4 @@ public class OnlinePlayerManager : MonoBehaviour
             }
         }
     }
-
 }

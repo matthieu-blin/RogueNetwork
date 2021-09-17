@@ -6,19 +6,108 @@ using UnityEngine;
 using System.Linq;
 using System.IO;
 
-[AttributeUsage( AttributeTargets.Field , AllowMultiple = true)]
+
+#if UNITY_EDITOR //&& BETA
+using UnityEditor;
+[CustomEditor(typeof(OnlineBehavior), true)]
+public class OnlineBehaviorEditor : Editor
+{
+    int selectedField = 0;
+    bool openreflection = true;
+    public override void OnInspectorGUI()
+    {
+        openreflection = EditorGUILayout.BeginFoldoutHeaderGroup(openreflection, "Sync Reflection");
+        
+        if (openreflection)
+        {
+            OnlineBehavior obj = (OnlineBehavior)target;
+            var syncedFieldsByScript = target.GetType().GetFields(BindingFlags.NonPublic
+                | BindingFlags.Public
+                | BindingFlags.FlattenHierarchy
+                | BindingFlags.Instance
+                | BindingFlags.Static)
+                .Where(prop => Attribute.IsDefined(prop, typeof(Sync))).ToArray();
+
+            GUILayout.BeginHorizontal("fieldPopup");
+            string[] fieldNames = obj.GetType().GetFields().Select(f => f.Name).ToArray();
+            selectedField = EditorGUILayout.Popup("Fields", selectedField, fieldNames);
+            if (GUILayout.Button("+", GUILayout.Width(20)))
+            {
+                obj.m_serializedFields.Add(fieldNames[selectedField]);
+                EditorUtility.SetDirty(obj);
+            }
+            GUILayout.EndHorizontal();
+            foreach (var f in syncedFieldsByScript)
+            {
+                GUILayout.BeginHorizontal("scriptfield");
+                EditorGUILayout.LabelField(f.Name);
+                EditorGUILayout.LabelField("(script)", GUILayout.Width(40));
+                GUILayout.EndHorizontal();
+            }
+            foreach (var fname in obj.m_serializedFields)
+            {
+                GUILayout.BeginHorizontal("field");
+                EditorGUILayout.LabelField(fname);
+                bool b = GUILayout.Button("-", GUILayout.Width(20));
+                GUILayout.EndHorizontal();
+                if (b)
+                {
+                    obj.m_serializedFields.Remove(fname);
+                    EditorUtility.SetDirty(obj);
+                    break;
+                }
+            }
+        }
+        EditorGUILayout.EndFoldoutHeaderGroup();
+        base.OnInspectorGUI();
+    }
+}
+#endif
+
+/// <summary>
+/// Synced field will be automatically replicated 
+/// ONLY from player who has authority on this object to others.
+/// Replication will occurs when Object must be synced (check OnlineBehavior NeedSync)
+/// </summary>
+[AttributeUsage( AttributeTargets.Field)]
 public class Sync : Attribute{}
 
-[AttributeUsage(AttributeTargets.Method, AllowMultiple = true)]
+
+/// <summary>
+/// CMD is a remote function request by any online node to be execute on Host ONLY 
+/// This will be executed ONLY on host AND ONLY if requester has authority on object
+/// </summary>
+[AttributeUsage(AttributeTargets.Method)]
 public class CMD : Attribute { }
-[AttributeUsage(AttributeTargets.Method, AllowMultiple = true)]
+
+/// <summary>
+/// RPC is a remote function called by host (and ONLY by host will do nothing on Client)
+/// RPC Will be executed On Host every Clients
+/// </summary>
+[AttributeUsage(AttributeTargets.Method)]
 public class RPC : Attribute { }
 
-
+/// <summary>
+/// Inherit this instead of MonoBehavior to use automatic replication features to your script
+/// IMPORTANT, You must call Init() function at the end of you Start function
+/// 
+/// Field can be automatically replicated using [Sync] attribute in script, Or setting them up in editor inspector
+/// Function could be remotely called using [RPC] and [CMD] attribute (check them for more information)
+///     For now, you must call your [RPC][CMD]void FunctionName(params); using Call(FunctionName, params)
+///     RPC and CMD cannot return something.
+/// 
+/// WARNING : types of function parameters and fields that could be replicated are limited to specific objet type
+///         If you want to add your own, Check Init function to see how to register a writer and reader
+///TODO : use static dictionnary for this and static method
+///
+/// Object are only synced when Needed : By default everyframe, but you can override NeedSync method for your purpose
+/// </summary>
+[RequireComponent(typeof(OnlineIdentity))]
 public abstract class OnlineBehavior : MonoBehaviour
 {
     public int m_index = 0;
     public OnlineIdentity m_onlineIdentity;
+    public List<string> m_serializedFields;
     private FieldInfo[] m_syncedFields;
     public delegate object ObjectReader(BinaryReader _r);
     public delegate void ObjectWriter(object _o, BinaryWriter _r);
@@ -68,6 +157,15 @@ public abstract class OnlineBehavior : MonoBehaviour
         m_ObjectWriter.Add(typeof(Quaternion), WriteQuaternion);
         m_ObjectReaders.Add(typeof(int), ReadInt);
         m_ObjectWriter.Add(typeof(int), WriteInt);
+        m_ObjectReaders.Add(typeof(float), ReadSingle);
+        m_ObjectWriter.Add(typeof(float), WriteSingle);
+
+    }
+
+    
+    private void LateUpdate()
+    {
+        m_justSynced = false;
 
     }
 
@@ -98,7 +196,11 @@ public abstract class OnlineBehavior : MonoBehaviour
         }
         return false;
     }
+    //override this for your needs
     public virtual bool NeedSync() { return true; }
+    bool m_justSynced = false;
+    //return true only one frame after receiving a replication
+    public  bool HasSynced() { return m_justSynced; }
     public void Write(BinaryWriter w)
     {
         foreach (var field in m_syncedFields)
@@ -108,6 +210,10 @@ public abstract class OnlineBehavior : MonoBehaviour
             if (m_ObjectWriter.TryGetValue(type, out ow))
             {
                 ow(field.GetValue(this), w);
+            }
+            else
+            {
+                OnlineManager.Log("No Writer for this type " + type.Name);
             }
         }
     }
@@ -124,7 +230,12 @@ public abstract class OnlineBehavior : MonoBehaviour
                 {
                     field.SetValue(this, or(r));
                 }
+                else
+                {
+                    OnlineManager.Log("No Reader for this type " + type.Name);
+                }
             }
+            m_justSynced = true;
         }
         if (OnlineManager.Instance.IsHost())
         {
@@ -148,7 +259,7 @@ public abstract class OnlineBehavior : MonoBehaviour
             {
                 if (rpc.GetParameters().Count() != parameters.Count())
                 {
-                    Console.Error.WriteLine("wrong parameters size for " + _fncName);
+                    OnlineManager.Log("wrong parameters size for " + _fncName);
                 }
                 else
                 {
@@ -164,7 +275,7 @@ public abstract class OnlineBehavior : MonoBehaviour
             {
                 if (cmd.GetParameters().Count() != parameters.Count())
                 {
-                    Console.Error.WriteLine("wrong parameters size for " + _fncName);
+                    OnlineManager.Log("wrong parameters size for " + _fncName);
                 }
                 else
                 {
@@ -183,7 +294,6 @@ public abstract class OnlineBehavior : MonoBehaviour
 
     public bool NeedUpdateMethods()
     {
-
         if (m_onlineIdentity == null)
             return false;
         return m_pendingcmds.Count > 0 || m_pendingrpcs.Count > 0;
@@ -202,6 +312,10 @@ public abstract class OnlineBehavior : MonoBehaviour
                 if (m_ObjectWriter.TryGetValue(type, out ow))
                 {
                     ow(obj, w);
+                }
+                else
+                {
+                    OnlineManager.Log("No Writer for this type " + type.Name);
                 }
             }
         }
@@ -222,6 +336,10 @@ public abstract class OnlineBehavior : MonoBehaviour
                 {
                     ow(obj, w);
                 }
+                else
+                {
+                    OnlineManager.Log("No Writer for this type " + type.Name);
+                }
             }
         }
         m_pendingcmds.Clear();
@@ -238,27 +356,33 @@ public abstract class OnlineBehavior : MonoBehaviour
             object[] parameters = new object[paramCount];
             if (rpc != null)
             {
-               
-                    if (rpc.GetParameters().Count() != paramCount)
+                if (rpc.GetParameters().Count() != paramCount)
+                {
+                    OnlineManager.Log("wrong parameters size for " + name);
+                }
+                else
+                {
+                    int paramI = 0;
+                    foreach (var param in rpc.GetParameters())
                     {
-                        Console.Error.WriteLine("wrong parameters size for " + name);
-                    }
-                    else
-                    {
-                        int paramI = 0;
-                        foreach(var param in rpc.GetParameters())
+                        Type type = param.ParameterType;
+                        ObjectReader or;
+                        if (m_ObjectReaders.TryGetValue(type, out or))
                         {
-                            Type type = param.ParameterType;
-                            ObjectReader or;
-                            if (m_ObjectReaders.TryGetValue(type, out or))
-                            {
-                               parameters[paramI] =  or(r);
-                            }
-                            paramI++;
+                            parameters[paramI] = or(r);
                         }
-                        rpc.Invoke(this, parameters); ;
+                        else
+                        {
+                            OnlineManager.Log("No Reader for this type " + type.Name);
+                        }
+                        paramI++;
                     }
-                
+                    rpc.Invoke(this, parameters); ;
+                }
+            }
+            else
+            {
+                OnlineManager.Log("unknown rpc " + name);
             }
         }
     }
@@ -273,27 +397,33 @@ public abstract class OnlineBehavior : MonoBehaviour
             object[] parameters = new object[paramCount];
             if (cmd != null)
             {
-                
-                    if (cmd.GetParameters().Count() != paramCount)
+                if (cmd.GetParameters().Count() != paramCount)
+                {
+                    OnlineManager.Log("wrong parameters size for " + name);
+                }
+                else
+                {
+                    int paramI = 0;
+                    foreach (var param in cmd.GetParameters())
                     {
-                        Console.Error.WriteLine("wrong parameters size for " + name);
-                    }
-                    else
-                    {
-                        int paramI = 0;
-                        foreach (var param in cmd.GetParameters())
+                        Type type = param.ParameterType;
+                        ObjectReader or;
+                        if (m_ObjectReaders.TryGetValue(type, out or))
                         {
-                            Type type = param.ParameterType;
-                            ObjectReader or;
-                            if (m_ObjectReaders.TryGetValue(type, out or))
-                            {
-                                parameters[paramI] = or(r);
-                            }
-                            paramI++;
+                            parameters[paramI] = or(r);
+                        }
+                        else
+                        {
+                            OnlineManager.Log("No Reader for this type " + type.Name);
+                        }
+                        paramI++;
                     }
-                        cmd.Invoke(this, parameters); ;
-                    }
-                
+                    cmd.Invoke(this, parameters); ;
+                }
+            }
+            else
+            {
+                OnlineManager.Log("unknown cmd " + name);
             }
         }
     }
@@ -334,12 +464,22 @@ public abstract class OnlineBehavior : MonoBehaviour
         var t = (int)_obj;
         _w.Write(t);
     }
-
- 
     
     private object ReadInt( BinaryReader _r)
     {
         int i =  _r.ReadInt32();
         return i;
     }
+    private void WriteSingle(object _obj, BinaryWriter _w)
+    {
+        var t = (float)_obj;
+        _w.Write(t);
+    }
+
+    private object ReadSingle( BinaryReader _r)
+    {
+        float i =  _r.ReadSingle();
+        return i;
+    }
+
 }

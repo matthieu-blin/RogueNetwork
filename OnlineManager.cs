@@ -1,22 +1,25 @@
 ﻿using Assets;
-using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.Net;
-using System.Runtime.Serialization.Formatters.Binary;
-using System.Text;
 using UnityEngine;
 
+/// <summary>
+/// Singleton Component, don't destroy on load
+/// Main component needed to enable online in your game
+/// Basic architecture used is Host/Client 
+/// Set your host adress using editor then call StartHost or StartClient to establish connection
+/// 
+/// The main purpose of this class is to pair a message type with message data to write your own game protocol easily
+/// Register a message handler with a specific (unique) type
+/// when someone send a message with this type your handler will be called.
+/// 
+/// Note : your receive handlers will be called when this component is Updated to avoid thread issue
+/// </summary>
 public class OnlineManager : MonoBehaviour
 {
-    private static OnlineManager instance = null;
-    public static OnlineManager Instance
-    {
-        get
-        {
-            return instance;
-        }
-    }
+
+    //todo rajouter un log du nombre de messages traités en une frame
 
 
     public string HostIP = "127.0.0.1";
@@ -29,10 +32,12 @@ public class OnlineManager : MonoBehaviour
 
     Dictionary<byte,GameMessageCallback> m_MessageCallbacksHandler;
 
-  
+    //Singleton
+    public static OnlineManager Instance { get; private set; } = null;
+
     public void Awake()
     {
-        instance = this;
+        Instance = this;
         DontDestroyOnLoad(this);
     }
     public void Start()
@@ -104,9 +109,9 @@ public class OnlineManager : MonoBehaviour
 
         m_tcp.Process();
     }
-    public void Log(string txt)
+    public static void Log(string txt)
     {
-        Debug.Log(txt);
+        Debug.LogError(txt);
     }
     public void SendMessage(byte _handlerType, byte[] _msg)
     {
@@ -120,14 +125,13 @@ public class OnlineManager : MonoBehaviour
                 m_tcp.SendMessage(m.ToArray());
             }
         }
-        
     }
 
     public int OnGameMessage(TCPApi.Message msg)
     {
         using (MemoryStream m = new MemoryStream(msg.m_message))
         {
-            using(BinaryReader r = new BinaryReader(m))
+            using (BinaryReader r = new BinaryReader(m))
             {
                 while (r.BaseStream.Position != r.BaseStream.Length)
                 {

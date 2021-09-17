@@ -13,6 +13,20 @@ using System.Security;
 
 namespace Assets
 {
+    /// <summary>
+    ///handle low level stuff on Socket using TCP protocol
+    ///How to use :
+    ///Use Listen on Host and Connect on client to establish communication
+    ///Host can handle multiple clients
+    ///Register at least one callback on OnMessageReceived
+    ///call process each time you want handle Receiving message
+    ///Send Message to other clients using SendMessage function
+    /// you can specify a list of endpoint to select only specific clients 
+    ///
+    /// Additionnal feats 
+    /// GetLocalEndPoint will return your local IP used
+    /// FetchClients will return a list of connected endpoints
+    /// </summary>
     public class TCPApi
     {
         public delegate void LogDelegate (string txt);
@@ -38,7 +52,7 @@ namespace Assets
 
         public class Message
         {
-            public uint m_playerID = 0;
+            public EndPoint m_sender = null;
             public byte[] m_message = null;
         }
 
@@ -254,7 +268,16 @@ namespace Assets
                 while (true)
                 {
                     //blocking function
-                    int numByte = client.m_socket.Receive(bytes);
+                    int numByte = 0;
+                    try
+                    {
+                        numByte = client.m_socket.Receive(bytes);
+                    }catch(SocketException )
+                    {
+                        //when d/c, a socket exception is raised by WSACancel
+                        //should log if that's not this exact exception though
+                        break;
+                    }
                     if (numByte == 4096)
                     {
                         Log("error : buffer size exceeded");
@@ -269,7 +292,7 @@ namespace Assets
                     Message msg = new Message();
                     msg.m_message = new byte[numByte];
                     Array.Copy(bytes, msg.m_message, numByte);
-                    msg.m_playerID = 0;
+                    msg.m_sender = client.m_socket.RemoteEndPoint;
                     lock (lockMessage)
                     {
                         m_pendingMessages.Add(msg);
@@ -304,7 +327,7 @@ namespace Assets
             return true;
         }
 
-        public int SendMessage(byte[] _msg)
+        public int SendMessage(byte[] _msg, List<EndPoint> _to = null)
         {
             if(_msg.Length > BufferSize)
             {
@@ -317,9 +340,14 @@ namespace Assets
                 foreach (Client client in m_clients)
                 {
                     if (!client.m_ListenClient)
-                        numBytes += client.m_socket.Send(_msg);
+                    {
+                        if (_to == null || _to.Contains(client.m_socket.RemoteEndPoint))
+                            numBytes += client.m_socket.Send(_msg);
+                    }
                 }
             }
+            Log("msg send with size " + _msg.Length 
+                + "  to " + m_clients.Count + " clients (total size : " + numBytes + ")");
             return numBytes;
         }
 

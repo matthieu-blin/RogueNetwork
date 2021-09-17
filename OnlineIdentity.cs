@@ -1,11 +1,16 @@
 ﻿using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
-
-//This component add online existency to a game object
-//as soon as you set it, your object won't be spawned on client anymore
-//but will be spawned on server then depending on configuration
-//will be send to the clients
+/// <summary>
+/// This component add online existency to a game object
+/// As soon as you set it, your object WON'T BE SPAWNED on client anymore (or won't be active)
+/// instead Host will handle the spawn
+/// 
+/// Each Online Object should have an Unique ID so different client can refer to the 'same' objet with it
+/// This unique ID could be set :
+///     -automatically if you decide to spawn your object Statically or Dynamically (check OnlineObjectManager)
+///     -manually if you decide to give it a determinist one (you must use OnlineObject.ComputeDeterministID()) 
+/// </summary>101
 public class OnlineIdentity : MonoBehaviour
 {
 
@@ -15,8 +20,8 @@ public class OnlineIdentity : MonoBehaviour
     public enum Type
     { 
         Static, //object in scene, sync between host and clients
-        Dynamic, //object dynamically spawned using OnlineManager.Spawn
-        Determinist, //object dynamically spawned but on each clients, you need to give a determinist ids
+        Dynamic, //object dynamically spawned by script using OnlineObject.Instanciate
+        Determinist, //object dynamically spawned by script but parallel on each clients using GameObject.Instanciate, you need to give a determinist ids
         HostOnly //object existing only on Host
     };
     public Type m_type = Type.Static;
@@ -136,7 +141,6 @@ public class OnlineIdentity : MonoBehaviour
                 }
             case Type.Determinist:
                 {
-                    //check if uid is correctly setted and is determinist
                     break;
                 }
         }
